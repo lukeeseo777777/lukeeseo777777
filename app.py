@@ -9,7 +9,7 @@ import json  # 데이터 전달을 안전하게 하기 위해 추가
 st.set_page_config(page_title="인천대 자취방 최적화", page_icon="🏠", layout="wide")
 
 # --- KAKAO MAP API KEY 설정 ---
-KAKAO_API_KEY = "853a71f8261b3dccfd8c6b6e1879d3c4"
+KAKAO_API_KEY = st.secrets["kakao_api_key"]
 
 # --- 2. 데이터 로드 및 전처리 ---
 @st.cache_data
