@@ -172,7 +172,7 @@ if not result_df.empty:
                                           fill='toself', line_color='#00CC96'))
             fig.update_layout(polar=dict(radialaxis=dict(visible=True, range=[0, 10])), 
                               showlegend=False, height=250, margin=dict(l=40, r=40, t=20, b=20))
-            st.plotly_chart(fig, use_container_width=True)
+            st.plotly_chart(fig, use_container_width=True, key=f"radar_{i}")
             st.info(f"📍 {row['주소']}")
             st.write(f"📏 {row['평수']}평 | 💸 {int(row['보증금']/10000)}/{int(row['월세']/10000)}")
             st.link_button("상세보기", row['url 주소'])
