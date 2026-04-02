@@ -10,8 +10,7 @@ st.set_page_config(page_title="인천대 자취방 최적화", page_icon="🏠",
 
 # --- KAKAO MAP API KEY 설정 ---
 # 실제 배포 시에는 st.secrets["kakao_api_key"] 등을 사용하세요.
-KAKAO_API_KEY = "853a71f8261b3dccfd8c6b6e1879d3c4"
-
+KAKAO_API_KEY = st.secrets["kakao_api_key"]
 
 # --- 2. 데이터 로드 및 전처리 (기존과 동일) ---
 @st.cache_data
