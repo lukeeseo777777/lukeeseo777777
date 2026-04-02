@@ -70,25 +70,18 @@ filtered_df['최종점수'] = ((filtered_df['가격점수'] * (w_price / total_w
 
 result_df = filtered_df.sort_values('최종점수', ascending=False).reset_index(drop=True)
 
-# --- 5. 카카오맵 렌더링 함수 (수정됨) ---
+# --- 5. 카카오맵 렌더링 함수 (주소->좌표 자동 변환 적용) ---
 def render_kakao_map(data):
-    if data.empty:
-        center_lat, center_lng = 37.375, 126.632
-    else:
-        center_lat, center_lng = data['위도'].mean(), data['경도'].mean()
-
+    # 파이썬에서 위경도를 계산할 필요 없이 주소만 JS로 넘깁니다.
     marker_list = []
     for _, row in data.iterrows():
         marker_list.append({
             "title": str(row['주소']),
-            "lat": float(row['위도']),
-            "lng": float(row['경도']),
+            "address": str(row['주소']), # 주소 변환을 위해 주소 데이터 추가
             "content": f'<div style="padding:5px;font-size:12px;width:150px;color:black;">{row["최종점수"]}점 | {row["종류"]}</div>'
         })
     markers_json = json.dumps(marker_list, ensure_ascii=False)
 
-    # 핵심 1: meta 태그를 통해 http 요청을 https로 강제 변환
-    # 핵심 2: sdk.js 주소 앞에 https: 를 명시
     map_html = f"""
     <head>
         <meta http-equiv="Content-Security-Policy" content="upgrade-insecure-requests">
@@ -104,25 +97,52 @@ def render_kakao_map(data):
                     window.kakao.maps.load(function() {{
                         var container = document.getElementById('map');
                         var options = {{
-                            center: new kakao.maps.LatLng({center_lat}, {center_lng}),
+                            center: new kakao.maps.LatLng(37.375, 126.632), // 초기 중심점
                             level: 5
                         }};
                         var map = new kakao.maps.Map(container, options);
+                        
+                        // 주소-좌표 변환 객체를 생성합니다
+                        var geocoder = new kakao.maps.services.Geocoder();
                         var positions = {markers_json};
+                        
+                        // 마커가 모두 보이도록 지도를 자동 조절하기 위한 객체
+                        var bounds = new kakao.maps.LatLngBounds();
+                        var markerCount = 0;
 
                         positions.forEach(function(pos) {{
-                            var marker = new kakao.maps.Marker({{
-                                map: map,
-                                position: new kakao.maps.LatLng(pos.lat, pos.lng)
-                            }});
-                            var infowindow = new kakao.maps.InfoWindow({{
-                                content: pos.content
-                            }});
-                            kakao.maps.event.addListener(marker, 'mouseover', function() {{
-                                infowindow.open(map, marker);
-                            }});
-                            kakao.maps.event.addListener(marker, 'mouseout', function() {{
-                                infowindow.close();
+                            // 주소로 좌표를 검색합니다
+                            geocoder.addressSearch(pos.address, function(result, status) {{
+                                // 정상적으로 검색이 완료됐으면
+                                if (status === kakao.maps.services.Status.OK) {{
+                                    var coords = new kakao.maps.LatLng(result[0].y, result[0].x);
+                                    
+                                    var marker = new kakao.maps.Marker({{
+                                        map: map,
+                                        position: coords,
+                                        title: pos.title
+                                    }});
+                                    
+                                    var infowindow = new kakao.maps.InfoWindow({{
+                                        content: pos.content
+                                    }});
+                                    
+                                    kakao.maps.event.addListener(marker, 'mouseover', function() {{
+                                        infowindow.open(map, marker);
+                                    }});
+                                    kakao.maps.event.addListener(marker, 'mouseout', function() {{
+                                        infowindow.close();
+                                    }});
+
+                                    // 검색된 좌표를 bounds 객체에 추가합니다
+                                    bounds.extend(coords);
+                                    markerCount++;
+
+                                    // 모든 마커가 찍히면 지도의 중심과 비율을 마커들에 맞게 자동으로 조절합니다
+                                    if (markerCount === positions.length) {{
+                                        map.setBounds(bounds);
+                                    }}
+                                }}
                             }});
                         }});
                     }});
