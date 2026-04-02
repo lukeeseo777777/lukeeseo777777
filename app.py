@@ -3,7 +3,7 @@ import pandas as pd
 import numpy as np
 import plotly.graph_objects as go
 import streamlit.components.v1 as components
-import json  # 데이터 전달을 안전하게 하기 위해 추가
+import json
 
 # --- 1. 페이지 설정 ---
 st.set_page_config(page_title="인천대 자취방 최적화", page_icon="🏠", layout="wide")
@@ -15,7 +15,6 @@ KAKAO_API_KEY = st.secrets["kakao_api_key"]
 @st.cache_data
 def load_data():
     try:
-        # 파일명이 정확해야 합니다.
         df = pd.read_csv('부동산 매물 정리.csv', encoding='utf-8')
         df = df.dropna(subset=['주소', '보증금'])
         
@@ -26,19 +25,20 @@ def load_data():
         option_cols = ['에어컨', '냉장고', '세탁기', '인덕션', '엘리베이터', '신발장', '옷장', '베란다', '싱크대']
         df['시설점수'] = df.apply(lambda row: (sum(1 for col in option_cols if row.get(col) == 'O') / len(option_cols)) * 10, axis=1)
 
-        # 가격 및 크기 점수
+        # 가격 및 크기 점수 정규화
         min_p, max_p = df['실질월세'].min(), df['실질월세'].max()
-        df['가격점수'] = 10 - ((df['실질월세'] - min_p) / (max_p - min_p) * 10)
+        if max_p == min_p:
+            df['가격점수'] = 10
+        else:
+            df['가격점수'] = 10 - ((df['실질월세'] - min_p) / (max_p - min_p) * 10)
         
         target_max_size = 25.0
         min_s = df['평수'].min()
-        df['크기점수'] = ((df['평수'] - min_s) / (target_max_size - min_s) * 10)
+        if target_max_size == min_s:
+            df['크기점수'] = 10
+        else:
+            df['크기점수'] = ((df['평수'] - min_s) / (target_max_size - min_s) * 10)
 
-        # 좌표값 확인 (없을 경우 기본값)
-        if '위도' not in df.columns or '경도' not in df.columns:
-            df['위도'] = 37.375 
-            df['경도'] = 126.632
-            
         return df
     except Exception as e:
         st.error(f"데이터 로드 에러: {e}")
@@ -70,14 +70,13 @@ filtered_df['최종점수'] = ((filtered_df['가격점수'] * (w_price / total_w
 
 result_df = filtered_df.sort_values('최종점수', ascending=False).reset_index(drop=True)
 
-# --- 5. 카카오맵 렌더링 함수 (주소->좌표 자동 변환 적용) ---
+# --- 5. 카카오맵 렌더링 함수 ---
 def render_kakao_map(data):
-    # 파이썬에서 위경도를 계산할 필요 없이 주소만 JS로 넘깁니다.
     marker_list = []
     for _, row in data.iterrows():
         marker_list.append({
             "title": str(row['주소']),
-            "address": str(row['주소']), # 주소 변환을 위해 주소 데이터 추가
+            "address": str(row['주소']), # 주소 변환용
             "content": f'<div style="padding:5px;font-size:12px;width:150px;color:black;">{row["최종점수"]}점 | {row["종류"]}</div>'
         })
     markers_json = json.dumps(marker_list, ensure_ascii=False)
@@ -97,48 +96,30 @@ def render_kakao_map(data):
                     window.kakao.maps.load(function() {{
                         var container = document.getElementById('map');
                         var options = {{
-                            center: new kakao.maps.LatLng(37.375, 126.632), // 초기 중심점
+                            center: new kakao.maps.LatLng(37.375, 126.632),
                             level: 5
                         }};
                         var map = new kakao.maps.Map(container, options);
                         
-                        // 주소-좌표 변환 객체를 생성합니다
                         var geocoder = new kakao.maps.services.Geocoder();
                         var positions = {markers_json};
                         
-                        // 마커가 모두 보이도록 지도를 자동 조절하기 위한 객체
                         var bounds = new kakao.maps.LatLngBounds();
                         var markerCount = 0;
 
                         positions.forEach(function(pos) {{
-                            // 주소로 좌표를 검색합니다
                             geocoder.addressSearch(pos.address, function(result, status) {{
-                                // 정상적으로 검색이 완료됐으면
                                 if (status === kakao.maps.services.Status.OK) {{
                                     var coords = new kakao.maps.LatLng(result[0].y, result[0].x);
+                                    var marker = new kakao.maps.Marker({{ map: map, position: coords, title: pos.title }});
+                                    var infowindow = new kakao.maps.InfoWindow({{ content: pos.content }});
                                     
-                                    var marker = new kakao.maps.Marker({{
-                                        map: map,
-                                        position: coords,
-                                        title: pos.title
-                                    }});
-                                    
-                                    var infowindow = new kakao.maps.InfoWindow({{
-                                        content: pos.content
-                                    }});
-                                    
-                                    kakao.maps.event.addListener(marker, 'mouseover', function() {{
-                                        infowindow.open(map, marker);
-                                    }});
-                                    kakao.maps.event.addListener(marker, 'mouseout', function() {{
-                                        infowindow.close();
-                                    }});
+                                    kakao.maps.event.addListener(marker, 'mouseover', function() {{ infowindow.open(map, marker); }});
+                                    kakao.maps.event.addListener(marker, 'mouseout', function() {{ infowindow.close(); }});
 
-                                    // 검색된 좌표를 bounds 객체에 추가합니다
                                     bounds.extend(coords);
                                     markerCount++;
 
-                                    // 모든 마커가 찍히면 지도의 중심과 비율을 마커들에 맞게 자동으로 조절합니다
                                     if (markerCount === positions.length) {{
                                         map.setBounds(bounds);
                                     }}
@@ -152,7 +133,8 @@ def render_kakao_map(data):
     </script>
     """
     return components.html(map_html, height=420)
-    # --- 6. 결과 화면 출력 ---
+
+# --- 6. 결과 화면 출력 ---
 st.title("인천대 송도 자취방 추천 🏠")
 
 if not result_df.empty:
@@ -162,6 +144,8 @@ if not result_df.empty:
     st.divider()
     st.subheader("🏆 맞춤형 추천 매물 TOP 3")
     top_cols = st.columns(3)
+    
+    # 여기서 에러가 났던 key를 고유하게 부여합니다!
     for i in range(min(3, len(result_df))):
         row = result_df.iloc[i]
         with top_cols[i]:
@@ -172,15 +156,25 @@ if not result_df.empty:
                                           fill='toself', line_color='#00CC96'))
             fig.update_layout(polar=dict(radialaxis=dict(visible=True, range=[0, 10])), 
                               showlegend=False, height=250, margin=dict(l=40, r=40, t=20, b=20))
-            st.plotly_chart(fig, use_container_width=True, key=f"radar_{i}")
+            
+            st.plotly_chart(fig, use_container_width=True, key=f"radar_{i}") # 고유 key 적용 완료
+            
             st.info(f"📍 {row['주소']}")
             st.write(f"📏 {row['평수']}평 | 💸 {int(row['보증금']/10000)}/{int(row['월세']/10000)}")
-            st.link_button("상세보기", row['url 주소'])
+            
+            # url 주소가 있는 경우에만 버튼 생성 (에러 방지)
+            if 'url 주소' in row and pd.notna(row['url 주소']):
+                st.link_button("상세보기", str(row['url 주소']))
 
     st.divider()
     st.subheader("📋 전체 매물 분석 리스트")
-    st.dataframe(result_df[['최종점수', '주소', '종류', '평수', '가격점수', '시설점수', '크기점수', 'url 주소']],
-                 column_config={"url 주소": st.column_config.LinkColumn("링크")},
+    
+    display_cols = ['최종점수', '주소', '종류', '평수', '가격점수', '시설점수', '크기점수']
+    if 'url 주소' in result_df.columns:
+        display_cols.append('url 주소')
+        
+    st.dataframe(result_df[display_cols],
+                 column_config={"url 주소": st.column_config.LinkColumn("링크")} if 'url 주소' in result_df.columns else None,
                  hide_index=True, use_container_width=True)
 else:
-    st.warning("조건에 맞는 매물이 없습니다.")
+    st.warning("조건에 맞는 매물이 없습니다. 좌측 검색 필터의 예산을 올려보세요.")
