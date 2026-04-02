@@ -69,7 +69,7 @@ filtered_df['최종점수'] = ((filtered_df['가격점수'] * (w_price / total_w
 result_df = filtered_df.sort_values('최종점수', ascending=False).reset_index(drop=True)
 
 
-# --- 5. 카카오맵 렌더링 함수 ---
+# --- 5. 카카오맵 렌더링 함수 (수정본) ---
 def render_kakao_map(data):
     # 지도 중심점을 데이터의 평균 위경도로 설정
     if not data.empty:
@@ -85,43 +85,47 @@ def render_kakao_map(data):
         {{
             title: '{row['주소']}', 
             latlng: new kakao.maps.LatLng({row['위도']}, {row['경도']}),
-            content: '<div style="padding:5px;font-size:12px;">{row['최종점수']}점<br>{row['종류']}</div>'
+            content: '<div style="padding:5px;font-size:12px;color:black;">{row['최종점수']}점<br>{row['종류']}</div>'
         }},"""
 
+    # autoload=false 추가 및 kakao.maps.load()로 감싸기
     map_html = f"""
     <div id="map" style="width:100%;height:400px;border-radius:10px;"></div>
-    <script type="text/javascript" src="https://dapi.kakao.com/v2/maps/sdk.js?appkey={KAKAO_API_KEY}"></script>
+    <script type="text/javascript" src="https://dapi.kakao.com/v2/maps/sdk.js?appkey={KAKAO_API_KEY}&autoload=false"></script>
     <script>
-        var mapContainer = document.getElementById('map'),
-            mapOption = {{ 
-                center: new kakao.maps.LatLng({center_lat}, {center_lng}),
-                level: 5 
-            }};
-        var map = new kakao.maps.Map(mapContainer, mapOption);
-        var positions = [{markers_js}];
+        // 카카오맵 도구가 모두 준비되면 실행!
+        kakao.maps.load(function() {{
+            var mapContainer = document.getElementById('map'),
+                mapOption = {{ 
+                    center: new kakao.maps.LatLng({center_lat}, {center_lng}),
+                    level: 5 
+                }};
+            var map = new kakao.maps.Map(mapContainer, mapOption);
+            
+            var positions = [{markers_js}];
 
-        for (var i = 0; i < positions.length; i ++) {{
-            var marker = new kakao.maps.Marker({{
-                map: map,
-                position: positions[i].latlng,
-                title: positions[i].title
-            }});
-            var infowindow = new kakao.maps.InfoWindow({{
-                content: positions[i].content
-            }});
-            (function(marker, infowindow) {{
-                kakao.maps.event.addListener(marker, 'mouseover', function() {{
-                    infowindow.open(map, marker);
+            for (var i = 0; i < positions.length; i ++) {{
+                var marker = new kakao.maps.Marker({{
+                    map: map,
+                    position: positions[i].latlng,
+                    title: positions[i].title
                 }});
-                kakao.maps.event.addListener(marker, 'mouseout', function() {{
-                    infowindow.close();
+                var infowindow = new kakao.maps.InfoWindow({{
+                    content: positions[i].content
                 }});
-            }})(marker, infowindow);
-        }}
+                (function(marker, infowindow) {{
+                    kakao.maps.event.addListener(marker, 'mouseover', function() {{
+                        infowindow.open(map, marker);
+                    }});
+                    kakao.maps.event.addListener(marker, 'mouseout', function() {{
+                        infowindow.close();
+                    }});
+                }})(marker, infowindow);
+            }}
+        }});
     </script>
     """
     return components.html(map_html, height=420)
-
 
 # --- 6. 결과 화면 출력 ---
 st.title("인천대 송도 자취방 추천 (10점 만점 척도) 🏠")
